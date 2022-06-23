@@ -18,7 +18,11 @@ varying vec4 vWorldPos;
 #endif
 #ifdef PERPIXEL
     #ifdef SHADOW
-        varying vec4 vShadowPos[NUMCASCADES];
+        #ifndef GL_ES
+            varying vec4 vShadowPos[NUMCASCADES];
+        #else
+            varying highp vec4 vShadowPos[NUMCASCADES];
+        #endif
     #endif
     #ifdef SPOTLIGHT
         varying vec4 vSpotPos;
@@ -50,10 +54,10 @@ void VS()
     #endif
 
     #ifdef NORMALMAP
-        vec3 tangent = GetWorldTangent(modelMatrix);
-        vec3 bitangent = cross(tangent, vNormal) * iTangent.w;
+        vec4 tangent = GetWorldTangent(modelMatrix);
+        vec3 bitangent = cross(tangent.xyz, vNormal) * tangent.w;
         vTexCoord = vec4(GetTexCoord(iTexCoord), bitangent.xy);
-        vTangent = vec4(tangent, bitangent.z);
+        vTangent = vec4(tangent.xyz, bitangent.z);
     #else
         vTexCoord = GetTexCoord(iTexCoord);
     #endif
@@ -65,14 +69,14 @@ void VS()
         #ifdef SHADOW
             // Shadow projection: transform from world space to shadow space
             for (int i = 0; i < NUMCASCADES; i++)
-                vShadowPos[i] = GetShadowPos(i, projWorldPos);
+                vShadowPos[i] = GetShadowPos(i, vNormal, projWorldPos);
         #endif
 
         #ifdef SPOTLIGHT
             // Spotlight projection: transform from world space to projector texture coordinates
-            vSpotPos =  projWorldPos * cLightMatrices[0];
+            vSpotPos = projWorldPos * cLightMatrices[0];
         #endif
-    
+
         #ifdef POINTLIGHT
             vCubeMaskVec = (worldPos - cLightPos.xyz) * mat3(cLightMatrices[0][0].xyz, cLightMatrices[0][1].xyz, cLightMatrices[0][2].xyz);
         #endif
@@ -82,16 +86,16 @@ void VS()
             // If using lightmap, disregard zone ambient light
             // If using AO, calculate ambient in the PS
             vVertexLight = vec3(0.0, 0.0, 0.0);
-            vTexCoord2 = iTexCoord2;
+            vTexCoord2 = iTexCoord1;
         #else
             vVertexLight = GetAmbient(GetZonePos(worldPos));
         #endif
-        
+
         #ifdef NUMVERTEXLIGHTS
             for (int i = 0; i < NUMVERTEXLIGHTS; ++i)
                 vVertexLight += GetVertexLight(i, worldPos, vNormal) * cVertexLights[i * 3].rgb;
         #endif
-        
+
         vScreenPos = GetScreenPos(gl_Position);
 
         #ifdef ENVCUBEMAP
@@ -117,7 +121,7 @@ void PS()
     #ifdef VERTEXCOLOR
         diffColor *= vColor;
     #endif
-    
+
     // Get material specular albedo
     #ifdef SPECMAP
         vec3 specColor = cMatSpecColor.rgb * texture2D(sSpecMap, vTexCoord.xy).rgb;
@@ -151,7 +155,7 @@ void PS()
         #ifdef SHADOW
             diff *= GetShadow(vShadowPos, vWorldPos.w);
         #endif
-    
+
         #if defined(SPOTLIGHT)
             lightColor = vSpotPos.w > 0.0 ? texture2DProj(sLightSpotMap, vSpotPos).rgb * cLightColor.rgb : vec3(0.0, 0.0, 0.0);
         #elif defined(CUBEMASK)
@@ -159,7 +163,7 @@ void PS()
         #else
             lightColor = cLightColor.rgb;
         #endif
-    
+
         #ifdef SPECULAR
             float spec = GetSpecular(normal, cCameraPosPS - vWorldPos.xyz, lightDir, cMatSpecColor.a);
             finalColor = diff * lightColor * (diffColor.rgb + spec * specColor * cLightColor.a);
@@ -168,7 +172,7 @@ void PS()
         #endif
 
         #ifdef AMBIENT
-            finalColor += cAmbientColor * diffColor.rgb;
+            finalColor += cAmbientColor.rgb * diffColor.rgb;
             finalColor += cMatEmissiveColor;
             gl_FragColor = vec4(GetFog(finalColor, fogFactor), diffColor.a);
         #else
@@ -188,7 +192,7 @@ void PS()
         vec3 finalColor = vVertexLight * diffColor.rgb;
         #ifdef AO
             // If using AO, the vertex light ambient is black, calculate occluded ambient here
-            finalColor += texture2D(sEmissiveMap, vTexCoord2).rgb * cAmbientColor * diffColor.rgb;
+            finalColor += texture2D(sEmissiveMap, vTexCoord2).rgb * cAmbientColor.rgb * diffColor.rgb;
         #endif
 
         #ifdef ENVCUBEMAP
@@ -212,9 +216,9 @@ void PS()
         vec3 finalColor = vVertexLight * diffColor.rgb;
         #ifdef AO
             // If using AO, the vertex light ambient is black, calculate occluded ambient here
-            finalColor += texture2D(sEmissiveMap, vTexCoord2).rgb * cAmbientColor * diffColor.rgb;
+            finalColor += texture2D(sEmissiveMap, vTexCoord2).rgb * cAmbientColor.rgb * diffColor.rgb;
         #endif
-        
+
         #ifdef MATERIAL
             // Add light pre-pass accumulation result
             // Lights are accumulated at half intensity. Bring back to full intensity now

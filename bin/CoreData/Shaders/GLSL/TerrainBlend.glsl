@@ -17,7 +17,11 @@ varying vec3 vNormal;
 varying vec4 vWorldPos;
 #ifdef PERPIXEL
     #ifdef SHADOW
-        varying vec4 vShadowPos[NUMCASCADES];
+        #ifndef GL_ES
+            varying vec4 vShadowPos[NUMCASCADES];
+        #else
+            varying highp vec4 vShadowPos[NUMCASCADES];
+        #endif
     #endif
     #ifdef SPOTLIGHT
         varying vec4 vSpotPos;
@@ -64,14 +68,14 @@ void VS()
         #ifdef SHADOW
             // Shadow projection: transform from world space to shadow space
             for (int i = 0; i < NUMCASCADES; i++)
-                vShadowPos[i] = GetShadowPos(i, projWorldPos);
+                vShadowPos[i] = GetShadowPos(i, vNormal, projWorldPos);
         #endif
 
         #ifdef SPOTLIGHT
             // Spotlight projection: transform from world space to projector texture coordinates
             vSpotPos = projWorldPos * cLightMatrices[0];
         #endif
-    
+
         #ifdef POINTLIGHT
             vCubeMaskVec = (worldPos - cLightPos.xyz) * mat3(cLightMatrices[0][0].xyz, cLightMatrices[0][1].xyz, cLightMatrices[0][2].xyz);
         #endif
@@ -81,16 +85,16 @@ void VS()
             // If using lightmap, disregard zone ambient light
             // If using AO, calculate ambient in the PS
             vVertexLight = vec3(0.0, 0.0, 0.0);
-            vTexCoord2 = iTexCoord2;
+            vTexCoord2 = iTexCoord1;
         #else
             vVertexLight = GetAmbient(GetZonePos(worldPos));
         #endif
-        
+
         #ifdef NUMVERTEXLIGHTS
             for (int i = 0; i < NUMVERTEXLIGHTS; ++i)
                 vVertexLight += GetVertexLight(i, worldPos, vNormal) * cVertexLights[i * 3].rgb;
         #endif
-        
+
         vScreenPos = GetScreenPos(gl_Position);
 
         #ifdef ENVCUBEMAP
@@ -107,7 +111,7 @@ void PS()
     weights /= sumWeights;
     vec4 diffColor = cMatDiffColor * (
         weights.r * texture2D(sDetailMap1, vDetailTexCoord) +
-        weights.g * texture2D(sDetailMap2, vDetailTexCoord) + 
+        weights.g * texture2D(sDetailMap2, vDetailTexCoord) +
         weights.b * texture2D(sDetailMap3, vDetailTexCoord)
     );
 
@@ -129,13 +133,13 @@ void PS()
         vec3 lightColor;
         vec3 lightDir;
         vec3 finalColor;
-        
+
         float diff = GetDiffuse(normal, vWorldPos.xyz, lightDir);
 
         #ifdef SHADOW
             diff *= GetShadow(vShadowPos, vWorldPos.w);
         #endif
-    
+
         #if defined(SPOTLIGHT)
             lightColor = vSpotPos.w > 0.0 ? texture2DProj(sLightSpotMap, vSpotPos).rgb * cLightColor.rgb : vec3(0.0, 0.0, 0.0);
         #elif defined(CUBEMASK)
@@ -143,7 +147,7 @@ void PS()
         #else
             lightColor = cLightColor.rgb;
         #endif
-    
+
         #ifdef SPECULAR
             float spec = GetSpecular(normal, cCameraPosPS - vWorldPos.xyz, lightDir, cMatSpecColor.a);
             finalColor = diff * lightColor * (diffColor.rgb + spec * specColor * cLightColor.a);
@@ -152,7 +156,7 @@ void PS()
         #endif
 
         #ifdef AMBIENT
-            finalColor += cAmbientColor * diffColor.rgb;
+            finalColor += cAmbientColor.rgb * diffColor.rgb;
             finalColor += cMatEmissiveColor;
             gl_FragColor = vec4(GetFog(finalColor, fogFactor), diffColor.a);
         #else

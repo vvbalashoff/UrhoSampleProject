@@ -15,10 +15,16 @@ void VS(float4 iPos : POSITION,
         int4 iBlendIndices : BLENDINDICES,
     #endif
     #ifdef INSTANCED
-        float4x3 iModelInstance : TEXCOORD2,
+        float4x3 iModelInstance : TEXCOORD4,
     #endif
-    #ifdef BILLBOARD
+    #if defined(BILLBOARD) || defined(DIRBILLBOARD)
         float2 iSize : TEXCOORD1,
+    #endif
+    #if defined(DIRBILLBOARD) || defined(TRAILBONE)
+        float3 iNormal : NORMAL,
+    #endif
+    #if defined(TRAILFACECAM) || defined(TRAILBONE)
+        float4 iTangent : TANGENT,
     #endif
     out float2 oTexCoord : TEXCOORD0,
     out float4 oWorldPos : TEXCOORD2,
@@ -44,7 +50,7 @@ void VS(float4 iPos : POSITION,
     #if defined(D3D11) && defined(CLIPPLANE)
         oClip = dot(oPos, cClipPlane);
     #endif
-    
+
     #ifdef VERTEXCOLOR
         oColor = iColor;
     #endif

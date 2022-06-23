@@ -46,10 +46,13 @@ void VS(float4 iPos : POSITION,
         int4 iBlendIndices : BLENDINDICES,
     #endif
     #ifdef INSTANCED
-        float4x3 iModelInstance : TEXCOORD2,
+        float4x3 iModelInstance : TEXCOORD4,
     #endif
-    #ifdef BILLBOARD
+    #if defined(BILLBOARD) || defined(DIRBILLBOARD)
         float2 iSize : TEXCOORD1,
+    #endif
+    #if defined(TRAILFACECAM) || defined(TRAILBONE)
+        float4 iTangent : TANGENT,
     #endif
     out float2 oTexCoord : TEXCOORD0,
     out float3 oNormal : TEXCOORD1,
@@ -92,7 +95,7 @@ void VS(float4 iPos : POSITION,
 
         #ifdef SHADOW
             // Shadow projection: transform from world space to shadow space
-            GetShadowPos(projWorldPos, oShadowPos);
+            GetShadowPos(projWorldPos, oNormal, oShadowPos);
         #endif
 
         #ifdef SPOTLIGHT
@@ -111,7 +114,7 @@ void VS(float4 iPos : POSITION,
             for (int i = 0; i < NUMVERTEXLIGHTS; ++i)
                 oVertexLight += GetVertexLight(i, worldPos, oNormal) * cVertexLights[i * 3].rgb;
         #endif
-        
+
         oScreenPos = GetScreenPos(oPos);
     #endif
 }
@@ -127,7 +130,7 @@ void PS(float2 iTexCoord : TEXCOORD0,
         #ifdef SPOTLIGHT
             float4 iSpotPos : TEXCOORD5,
         #endif
-        #ifdef CUBEMASK
+        #ifdef POINTLIGHT
             float3 iCubeMaskVec : TEXCOORD5,
         #endif
     #else
@@ -175,13 +178,13 @@ void PS(float2 iTexCoord : TEXCOORD0,
         float3 lightDir;
         float3 lightColor;
         float3 finalColor;
-        
+
         float diff = GetDiffuse(normal, iWorldPos.xyz, lightDir);
 
         #ifdef SHADOW
             diff *= GetShadow(iShadowPos, iWorldPos.w);
         #endif
-    
+
         #if defined(SPOTLIGHT)
             lightColor = iSpotPos.w > 0.0 ? Sample2DProj(LightSpotMap, iSpotPos).rgb * cLightColor.rgb : 0.0;
         #elif defined(CUBEMASK)
@@ -189,7 +192,7 @@ void PS(float2 iTexCoord : TEXCOORD0,
         #else
             lightColor = cLightColor.rgb;
         #endif
-    
+
         #ifdef SPECULAR
             float spec = GetSpecular(normal, cCameraPosPS - iWorldPos.xyz, lightDir, cMatSpecColor.a);
             finalColor = diff * lightColor * (diffColor.rgb + spec * specColor * cLightColor.a);
@@ -198,7 +201,7 @@ void PS(float2 iTexCoord : TEXCOORD0,
         #endif
 
         #ifdef AMBIENT
-            finalColor += cAmbientColor * diffColor.rgb;
+            finalColor += cAmbientColor.rgb * diffColor.rgb;
             finalColor += cMatEmissiveColor;
             oColor = float4(GetFog(finalColor, fogFactor), diffColor.a);
         #else
@@ -229,7 +232,7 @@ void PS(float2 iTexCoord : TEXCOORD0,
             // Add light pre-pass accumulation result
             // Lights are accumulated at half intensity. Bring back to full intensity now
             float4 lightInput = 2.0 * Sample2DProj(LightBuffer, iScreenPos);
-            float3 lightSpecColor = lightInput.a * (lightInput.rgb / GetIntensity(lightInput.rgb));
+            float3 lightSpecColor = lightInput.a * (lightInput.rgb / max(GetIntensity(lightInput.rgb), 0.001);
 
             finalColor += lightInput.rgb * diffColor.rgb + lightSpecColor * specColor;
         #endif
